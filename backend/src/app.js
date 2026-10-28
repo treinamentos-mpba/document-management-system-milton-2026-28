@@ -1,37 +1,55 @@
+// Seed do servidor backend do Document Management System.
+//
+// Este arquivo é apenas um ponto de partida mínimo. Ao longo do workshop você
+// vai usar o Agent Mode do GitHub Copilot para construir as camadas:
+//   - routes/       (definição das rotas)
+//   - controllers/  (entrada HTTP e validação)
+//   - services/     (regras de negócio)
+//   - repositories/ (persistência: arquivos locais + metadados em memória)
+//
+// Restrição do projeto: uploads são gravados no filesystem local da aplicação
+// usando multer com diskStorage. Não utilize provedores externos.
+
 const express = require('express');
-const path = require('node:path');
-const DocumentsRepository = require('./repositories/documents.repository');
-const DocumentFilesRepository = require('./repositories/document-files.repository');
-const DocumentsService = require('./services/documents.service');
-const createUploadMiddleware = require('./middleware/upload.middleware');
-const errorMiddleware = require('./middleware/error.middleware');
-const createDocumentsRouter = require('./routes/documents.routes');
+const { createDocumentRepository } = require('./repositories/documents.repository');
+const { createDocumentService } = require('./services/documents.service');
+const { createDocumentController } = require('./controllers/documents.controller');
+const { createDocumentRouter } = require('./routes/documents.routes');
 
-function createApp(options = {}) {
-const storageDirectory = options.storageDirectory
-  || path.resolve(__dirname, '../storage');
-const documentsRepository = options.documentsRepository
-  || new DocumentsRepository();
-const documentFilesRepository = options.documentFilesRepository
-  || new DocumentFilesRepository(storageDirectory);
-const documentsService = options.documentsService
-  || new DocumentsService(documentsRepository, documentFilesRepository);
-const uploadMiddleware = options.uploadMiddleware
-  || createUploadMiddleware(storageDirectory);
+function readPositiveInteger(value, defaultValue, maximum, name) {
+  const number = value === undefined ? defaultValue : Number(value);
+  if ((value !== undefined && !/^\d+$/.test(value)) ||
+    !Number.isSafeInteger(number) || number < 1 || number > maximum) {
+    throw new Error(`Configuração inválida: ${name}.`);
+  }
+  return number;
+}
 
+const PORT = readPositiveInteger(process.env.PORT, 3000, 65535, 'PORT');
+const MAX_FILE_SIZE = readPositiveInteger(
+  process.env.MAX_FILE_SIZE_BYTES, 10485760, Number.MAX_SAFE_INTEGER, 'MAX_FILE_SIZE_BYTES',
+);
+
+function createApp({ storageDirectory, maxFileSize = MAX_FILE_SIZE } = {}) {
   const app = express();
+  const repository = createDocumentRepository({ storageDirectory });
+  const service = createDocumentService({ repository, maxFileSize });
+  const controller = createDocumentController({ service });
+
   app.use(express.json());
   app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
   });
-  app.use(createDocumentsRouter(documentsService, uploadMiddleware));
-  app.use(errorMiddleware);
+  app.use(createDocumentRouter({
+    controller,
+    storageDirectory: repository.storageDirectory,
+    maxFileSize,
+  }));
 
   return app;
 }
 
 const app = createApp();
-const PORT = process.env.PORT || 3000;
 
 if (require.main === module) {
   app.listen(PORT, () => {
