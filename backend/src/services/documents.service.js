@@ -9,12 +9,23 @@ function publicDocument({ id, originalName, size, uploadedAt, owner }) {
 }
 
 function createDocumentService({ repository, maxFileSize = 10485760 }) {
-  async function discardUpload(file) {
-    if (file?.filename) await repository.removeFile(file.filename);
+  async function cleanupUpload(file) {
+    if (!file?.filename) return;
+
+    for (const cleanup of [
+      () => repository.deleteMetadata(file.filename),
+      () => repository.removeFile(file.filename),
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        console.error('Falha ao limpar upload:', error);
+      }
+    }
   }
 
   return {
-    discardUpload,
+    cleanupUpload,
     async upload(file, owner) {
       if (!file) throw documentError('FILE_REQUIRED');
 
@@ -39,12 +50,7 @@ function createDocumentService({ repository, maxFileSize = 10485760 }) {
         await repository.save(document);
         return publicDocument(document);
       } catch (error) {
-        try {
-          await repository.deleteMetadata(file.filename);
-          await discardUpload(file);
-        } catch (cleanupError) {
-          console.error('Falha ao limpar upload:', cleanupError);
-        }
+        await cleanupUpload(file);
         throw error;
       }
     },

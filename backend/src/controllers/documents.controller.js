@@ -37,11 +37,7 @@ function createDocumentController({ service }) {
       next();
     },
     async handleUploadError(error, req, res, next) {
-      try {
-        await service.discardUpload(req.file);
-      } catch (cleanupError) {
-        console.error('Falha ao limpar upload:', cleanupError);
-      }
+      await service.cleanupUpload(req.file);
       next(error);
     },
     async upload(req, res) {
