@@ -8,8 +8,10 @@ const errorMiddleware = require('./middleware/error.middleware');
 const createDocumentsRouter = require('./routes/documents.routes');
 
 function createApp(options = {}) {
-const storageDirectory = options.storageDirectory || path.resolve(__dirname, '../storage');
-const documentsRepository = options.documentsRepository || new DocumentsRepository();
+const storageDirectory = options.storageDirectory
+  || path.resolve(__dirname, '../storage');
+const documentsRepository = options.documentsRepository
+  || new DocumentsRepository();
 const documentFilesRepository = options.documentFilesRepository
   || new DocumentFilesRepository(storageDirectory);
 const documentsService = options.documentsService
@@ -17,24 +19,24 @@ const documentsService = options.documentsService
 const uploadMiddleware = options.uploadMiddleware
   || createUploadMiddleware(storageDirectory);
 
-const app = express();
-app.use(express.json());
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-app.use(createDocumentsRouter(documentsService, uploadMiddleware));
-app.use(errorMiddleware);
+  const app = express();
+  app.use(express.json());
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
+  app.use(createDocumentsRouter(documentsService, uploadMiddleware));
+  app.use(errorMiddleware);
 
-return app;
+  return app;
 }
 
 const app = createApp();
 const PORT = process.env.PORT || 3000;
 
 if (require.main === module) {
-app.listen(PORT, () => {
-  console.log(`DMS backend ouvindo na porta ${PORT}`);
-});
+  app.listen(PORT, () => {
+    console.log(`DMS backend ouvindo na porta ${PORT}`);
+  });
 }
 
 module.exports = app;
