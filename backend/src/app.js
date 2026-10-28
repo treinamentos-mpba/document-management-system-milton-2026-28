@@ -11,17 +11,45 @@
 // usando multer com diskStorage. Não utilize provedores externos.
 
 const express = require('express');
+const { createDocumentRepository } = require('./repositories/documents.repository');
+const { createDocumentService } = require('./services/documents.service');
+const { createDocumentController } = require('./controllers/documents.controller');
+const { createDocumentRouter } = require('./routes/documents.routes');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+function readPositiveInteger(value, defaultValue, maximum, name) {
+  const number = value === undefined ? defaultValue : Number(value);
+  if ((value !== undefined && !/^\d+$/.test(value)) ||
+    !Number.isSafeInteger(number) || number < 1 || number > maximum) {
+    throw new Error(`Configuração inválida: ${name}.`);
+  }
+  return number;
+}
 
-app.use(express.json());
+const PORT = readPositiveInteger(process.env.PORT, 3000, 65535, 'PORT');
+const MAX_FILE_SIZE = readPositiveInteger(
+  process.env.MAX_FILE_SIZE_BYTES, 10485760, Number.MAX_SAFE_INTEGER, 'MAX_FILE_SIZE_BYTES',
+);
 
-// Endpoint de verificação de saúde. As demais rotas (/upload, /documents,
-// /documents/:id/download) serão implementadas durante o Passo 2.
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+function createApp({ storageDirectory, maxFileSize = MAX_FILE_SIZE } = {}) {
+  const app = express();
+  const repository = createDocumentRepository({ storageDirectory });
+  const service = createDocumentService({ repository, maxFileSize });
+  const controller = createDocumentController({ service });
+
+  app.use(express.json());
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
+  app.use(createDocumentRouter({
+    controller,
+    storageDirectory: repository.storageDirectory,
+    maxFileSize,
+  }));
+
+  return app;
+}
+
+const app = createApp();
 
 if (require.main === module) {
   app.listen(PORT, () => {
@@ -30,3 +58,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+module.exports.createApp = createApp;
