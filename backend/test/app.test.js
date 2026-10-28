@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const app = require('../src/app');
-const { mkdtemp, readdir, rm, unlink } = require('node:fs/promises');
+const { mkdtemp, readFile, readdir, rm, unlink } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -91,6 +91,49 @@ test('as rotas de documentos respeitam os contratos e o armazenamento local', as
     assert.strictEqual(malformed.status, 400);
     assert.strictEqual((await malformed.json()).error.code, 'INVALID_MULTIPART');
     assert.deepStrictEqual(await (await request('/documents')).json(), [document]);
+  });
+
+  await context.test('upload e download preservam bytes e a listagem retorna os documentos do usuário', async () => {
+    const owner = 'usuario-binario';
+    const empty = await request('/documents', { owner });
+    assert.strictEqual(empty.status, 200);
+    assert.deepStrictEqual(await empty.json(), []);
+
+    const contents = [Buffer.from([0, 255, 128, 13, 10]), Buffer.from([254, 0, 127])];
+    const documents = [];
+    for (const content of contents) {
+      const response = await upload(content, { owner });
+      assert.strictEqual(response.status, 201);
+      const uploaded = await response.json();
+      assert.strictEqual(uploaded.originalName, 'relatorio.txt');
+      assert.strictEqual(uploaded.owner, owner);
+      assert.strictEqual(uploaded.size, content.length);
+      assert.strictEqual(new Date(uploaded.uploadedAt).toISOString(), uploaded.uploadedAt);
+      assert.deepStrictEqual(await readFile(path.join(storageDirectory, uploaded.id)), content);
+      documents.push(uploaded);
+
+      const download = await request(`/documents/${uploaded.id}/download`, { owner });
+      assert.strictEqual(download.status, 200);
+      assert.deepStrictEqual(Buffer.from(await download.arrayBuffer()), content);
+    }
+
+    assert.notStrictEqual(documents[0].id, documents[1].id);
+    const listing = await request('/documents', { owner });
+    assert.strictEqual(listing.status, 200);
+    const expected = [...documents].sort((first, second) =>
+      second.uploadedAt.localeCompare(first.uploadedAt) || first.id.localeCompare(second.id));
+    assert.deepStrictEqual(await listing.json(), expected);
+    assert.deepStrictEqual(await (await request('/documents')).json(), [document]);
+  });
+
+  await context.test('listagem e download exigem usuário válido', async () => {
+    for (const route of ['/documents', `/documents/${document.id}/download`]) {
+      for (const owner of [null, 'invalido!']) {
+        const response = await request(route, { owner });
+        assert.strictEqual(response.status, 400);
+        assert.strictEqual((await response.json()).error.code, 'INVALID_USER');
+      }
+    }
   });
 
   await context.test('nomes repetidos não colidem e documentos são filtrados pelo dono', async () => {
